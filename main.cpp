@@ -1,11 +1,12 @@
-//  Hello World server
-
-#include <zmq.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
 #include <assert.h>
 #include <time.h>
+#include <random>
+#include <stdlib.h>
+#include <zmq.h>
+
 
 
 //  Receive ZeroMQ string from socket and convert into C string
@@ -28,8 +29,10 @@ static void s_send (void* socket, const char* message) {
 
 int simpleServer(){
     //  Socket to talk to clients
-    void *context = zmq_ctx_new ();
-    void *responder = zmq_socket (context, ZMQ_REP);
+    void* context = zmq_ctx_new ();
+    zmq_ctx_set (context, ZMQ_IO_THREADS, 4);   // 4ре потока для обработки
+
+    void* responder = zmq_socket (context, ZMQ_REP);
     int rc = zmq_bind (responder, "tcp://*:5555");
     assert (rc == 0);
     
@@ -51,7 +54,7 @@ int pushServer(){
     assert(rc == 0);
     
     //  Initialize random number generator
-    srandom((unsigned)time(NULL));
+    srand((unsigned)time(NULL));
     while (1) {
         //  Get values that will fool the boss
         int zipcode, temperature, relhumidity;
@@ -71,5 +74,5 @@ int pushServer(){
 
 int main (void)
 {
-    return pushServer();
+    return simpleServer();
 }
