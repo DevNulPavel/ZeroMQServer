@@ -49,7 +49,7 @@ endif(CLANG_FOUND)
 
 
 # Поиск библиотеки потоков
-# find_package(Threads REQUIRED)
+find_package(Threads REQUIRED)
 
 
 # Поиск библиотеки ZeroMQ на Cи
@@ -78,8 +78,8 @@ endif(CLANG_FOUND)
 add_definitions(-DDEBUG)
 
 # флаги
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -G -std=c++11 -Wall")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -G -std=c++11 -Wall")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++11 -Wall")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -std=c++11 -Wall")
 
 # Список исходников
 set (HEADERS 
@@ -99,7 +99,7 @@ add_executable(${PROJECT} ${APP_TYPE} ${HEADERS} ${SOURCES})
 
 # линкуемые библиотеки
 # 	target_link_libraries(${PROJECT} ${CMAKE_THREAD_LIBS_INIT} ${LIBZMQ_LIBRARIES} ${Boost_LIBRARIES} ${PROTOBUF_LIBRARIES})
-target_link_libraries(${PROJECT} ${LIBZMQ_LIBRARIES})
+target_link_libraries(${PROJECT} ${CMAKE_THREAD_LIBS_INIT} ${LIBZMQ_LIBRARIES})
 
 # Sanitizer
 if(CLANG_FOUND)
