@@ -29,6 +29,8 @@ void s_send (void* socket, const char* message) {
     zmq_send(socket, message, length, 0);
 }
 
+//////////////////////////////////////////////////////////////////////////////
+
 int simpleServer(){
     //  Socket to talk to clients
     void* context = zmq_ctx_new ();
@@ -46,6 +48,8 @@ int simpleServer(){
         zmq_send (responder, "World", 5, 0);
     }
 }
+
+//////////////////////////////////////////////////////////////////////////////
 
 // отправляет всем клиентам данные
 int pushServer(){
@@ -74,6 +78,7 @@ int pushServer(){
     return 0;
 }
 
+//////////////////////////////////////////////////////////////////////////////
 
 void* workerTask(void* context){
     //  Сокет для работы с диспетчером
@@ -82,12 +87,12 @@ void* workerTask(void* context){
 
     while (1) {
         char* string = s_recv(receiver);
-        printf ("Received request: [%s]\n", string);
-        free (string);
+        printf("Received request: [%s]\n", string);
+        free(string);
         //  Выполняем задачу
-        sleep (1);
+        sleep(1);
         // отвечаем клиенту
-        s_send (receiver, "World");
+        s_send(receiver, "World");
     }
     zmq_close (receiver);
     return nullptr;
@@ -103,7 +108,7 @@ int simpleMultThreaded(void) {
 
     //  Сокет для связи с обработчиками
     void* workers = zmq_socket (context, ZMQ_DEALER);
-    zmq_bind (workers, "inproc://workers");
+    zmq_bind(workers, "inproc://workers");
 
     //  Запускаем пул воркеров
     for (int thread_nbr = 0; thread_nbr < 5; thread_nbr++) {
@@ -112,16 +117,128 @@ int simpleMultThreaded(void) {
     }
 
     //  Connect work threads to client threads via a queue proxy
-    zmq_proxy (clients, workers, NULL);
+    zmq_proxy(clients, workers, NULL);
 
     //  We never get here, but clean up anyhow
-    zmq_close (clients);
-    zmq_close (workers);
+    zmq_close(clients);
+    zmq_close(workers);
+    zmq_ctx_destroy(context);
+    return 0;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
+void* step1 (void* context) {
+    // подключение ко второму шагу
+    void* xmitter = zmq_socket(context, ZMQ_PAIR);
+    zmq_connect (xmitter, "inproc://step2");
+    
+    // отсылаем сигнал первому обработчику
+    printf ("Step 1 ready, signaling step 2\n");
+    s_send (xmitter, "READY");
+    
+    zmq_close (xmitter);
+    
+    return NULL;
+}
+
+void* step2 (void *context) {
+    // Получатель данных
+    void* receiver = zmq_socket (context, ZMQ_PAIR);
+    zmq_bind(receiver, "inproc://step2");
+    
+    pthread_t thread;
+    pthread_create(&thread, NULL, step1, context);
+    
+    // Ждем сигнал из первого шага
+    char* string = s_recv (receiver);
+    free(string);
+    zmq_close(receiver);
+    
+    // подключаемся к начальному шагу для отправки результата
+    void* xmitter = zmq_socket (context, ZMQ_PAIR);
+    zmq_connect(xmitter, "inproc://step3");
+    
+    printf("Step 2 ready, signaling step 3\n");
+    s_send(xmitter, "READY");
+    zmq_close(xmitter);
+    
+    return NULL;
+}
+
+int threadSignaling(void) {
+    void* context = zmq_ctx_new ();
+    
+    //  Bind inproc socket before starting step2
+    void* receiver = zmq_socket (context, ZMQ_PAIR);
+    zmq_bind (receiver, "inproc://step3");
+    
+    pthread_t thread;
+    pthread_create (&thread, NULL, step2, context);
+
+    // ждем сигнал
+    char* string = s_recv (receiver);
+    free(string);
+    zmq_close(receiver);
+    
+    printf ("Test successful!\n");
+    zmq_ctx_destroy (context);
+    
+    return 0;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
+#define SUBSCRIBERS_EXPECTED  10  ////  We wait for 10 subscribers //
+
+int synchronizedPublisher(void) {
+    void* context = zmq_ctx_new();
+    
+    // Сокет, ожидающий публикации
+    void* publisher = zmq_socket(context, ZMQ_PUB);
+    
+    int sndhwm = 1100000;
+    zmq_setsockopt(publisher, ZMQ_SNDHWM, &sndhwm, sizeof (int));
+    
+    // подключаем
+    zmq_bind(publisher, "tcp://*:5561");
+    
+    // Сокет, получающий сигналы
+    void* syncservice = zmq_socket(context, ZMQ_REP);
+    zmq_bind(syncservice, "tcp://*:5562");
+    
+    //  Получаем синхронизацию для подпичиков
+    printf("Waiting for subscribers\n");
+    int subscribers = 0;
+    while (subscribers < SUBSCRIBERS_EXPECTED) {
+        //  - ждем запрос синхронизации
+        char* string = s_recv(syncservice);
+        free(string);
+        //  - Отвечаем запросом синхронизации
+        s_send (syncservice, "");
+        subscribers++;
+    }
+    
+    //  Now broadcast exactly 1M updates followed by END
+    printf ("Broadcasting messages\n");
+    for (int update_nbr = 0; update_nbr < 100; update_nbr++){
+        s_send (publisher, "Rhubarb");
+    }
+    
+    s_send (publisher, "END");
+    
+    zmq_close (publisher);
+    zmq_close (syncservice);
     zmq_ctx_destroy (context);
     return 0;
 }
 
+//////////////////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////
+
 int main (void)
 {
-    return simpleMultThreaded();
+    return synchronizedPublisher();
 }
